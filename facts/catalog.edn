@@ -1,0 +1,469 @@
+;; Verified public-register citations for the legal entity archived by this repository.
+;;
+;; Every row is checked live by tools/verify_citations.cljs:
+;;   * GET :cite/url must answer HTTP 2xx
+;;   * :cite/expect-substring must appear in the response body
+;;
+;; A URL that cannot be fetched, or whose body no longer carries the claim, is a
+;; DRIFT and fails the gate. Nothing is recorded here that was not retrieved.
+;;
+;; Three independent authorities are cited, not one: GLEIF (the global LEI
+;; system), Colombia's Registro Unico Empresarial y Social (RUES, the national
+;; commercial register the Camaras de Comercio administer, republished on
+;; Colombia's national open-data portal), and Ecuador's Servicio de Rentas
+;; Internas (SRI, the national tax authority). The second and third are not
+;; picked because they happened to agree -- they are the registration
+;; authorities GLEIF itself names on this entity's children, reached by
+;; following GLEIF's own RA pointers.
+;;
+;; Two joins are load-bearing and are checkable only against those authorities'
+;; own bodies:
+;;
+;;   * NIT 900102580-3. GLEIF lists Alicorp Colombia S.A.S among this LEI's
+;;     direct children and records it as validated at RA000101 under that id.
+;;     RA000101 resolves, at GLEIF, to the Bogota Chamber of Commerce. Asked for
+;;     NIT 900102580, Colombia's RUES returns ALICORP COLOMBIA S.A.S and gives
+;;     its chamber as BOGOTA -- so the parent-child edge and the chamber GLEIF
+;;     names are both corroborated by a register that does not source them from
+;;     GLEIF.
+;;
+;;   * RUC 0992711523001. GLEIF lists Inbalnor S. A. (EC) as a direct child,
+;;     validated at RA000691, which GLEIF resolves to Ecuador's SRI. Asked for
+;;     that RUC, the SRI returns INBALNOR S.A., status ACTIVO, principal
+;;     activity "fabricacion de alimentos preparados para animales acuaticos"
+;;     -- aquafeed, which is the business line Alicorp runs through Vitapro.
+;;     The SRI is a tax authority; it has no LEI field and no view of GLEIF.
+;;
+;; WHY STATUS ALONE CANNOT CARRY THESE ROWS. Measured 2026-08-20, each authority
+;; answers 2xx for a WRONG identifier:
+;;   * RUES with nit=900102581 -> HTTP 200, body "[]"
+;;   * SRI with ruc=0992711523002 -> HTTP 204, empty body
+;;   * SRI with ruc=1790016919001 -> HTTP 200, a different real company
+;;   * GLEIF filtered by registeredAs=20100055238 -> HTTP 200, "total":0
+;; So for every one of these rows it is the substring, not the HTTP status,
+;; that is doing the work. That is the property the gate exists to hold.
+;;
+;; IDENTITY ROWS vs ATTRIBUTE ROWS. Not every row discriminates on its own,
+;; and pretending otherwise would be the same dishonesty as trusting the status
+;; code. Measured by mutation on 2026-08-20, repointing all 31 subject-record
+;; URLs at a real sibling LEI (VITAPRO S.A., 549300U4HYYWKC16GO36) made 24 rows
+;; DRIFT and left 7 standing: corroboration level, registration authority
+;; RA000689, jurisdiction PE, region PE-CAL, status ISSUED, and the two managing
+;; LOU rows. All seven are true of that sibling too. They are ATTRIBUTE rows --
+;; they say what is true of the entity the URL names, and they mean something
+;; only because the IDENTITY rows in the same block pin which entity that is.
+;; The gate still fails as a whole, which is the property that matters; this
+;; note exists so no reader mistakes an attribute row for an identification.
+;;
+;; The Ecuadorian block was rewritten after this measurement. Its status and
+;; classification rows originally matched bare field values, and a swap to
+;; CORPORACION FAVORITA -- also ACTIVO, also a SOCIEDAD -- left them standing.
+;; Both now match a run that includes the name or the RUC, so all five SRI rows
+;; DRIFT together on any swap. The Colombian block already had this property:
+;; RUES answers an unknown NIT with an empty array, so nothing survives.
+;;
+;; ENCODING. Substrings are chosen from the RAW response body, and the two
+;; hosts do not agree on how to encode Spanish. api.gleif.org escapes all
+;; non-ASCII as \uXXXX (it publishes "Cámara de Comercio de Bogotá"
+;; and "ALICORP HOLDCO ESPAÑA SL"), while datos.gov.co and the SRI emit
+;; UTF-8 directly. Rather than write backslash escapes into this file, the
+;; GLEIF rows match a pure-ASCII run of the same field -- hence
+;; " Chamber of Commerce" (from internationalOrganizationName) rather than the
+;; accented local name. A normalised form would hide which body was read.
+;;
+;; The two PKRY rows match "country":"Peru" and "status":"ACTV" rather than the
+;; legal-form name because GLEIF's own ELF table spells it "Socieda Anonima
+;; Abierta" -- missing the final d of "Sociedad". That typo is GLEIF's, it is
+;; live today, and matching it would make this catalog fail the day GLEIF fixes
+;; it for a reason that has nothing to do with this entity.
+;;
+;; Deliberately NOT cited, and why (all measured 2026-08-20):
+;;
+;;   * SUNAT e-consultaruc.sunat.gob.pe -- the register GLEIF names as having
+;;     validated the SUBJECT's own RUC 20100055237, and so the citation this
+;;     catalog would most like to have. A GET returns the search form (22,835
+;;     bytes) and nothing else; the RUC is submitted by POST behind a session,
+;;     and the delivered body contains neither "20100055237" nor "ALICORP".
+;;     Appending accion/nroRuc/tipo query parameters returns the same form,
+;;     byte for byte. There is no substring a body check could honestly assert,
+;;     so the subject's RUC is cited from GLEIF's registeredAs/validatedAs
+;;     fields and is NOT claimed to have been re-checked at SUNAT.
+;;   * SMV (Superintendencia del Mercado de Valores), Peru's securities
+;;     regulator, which Alicorp files with as a listed issuer. www.smv.gob.pe
+;;     301-redirects to www.gob.pe/smv; that body is 276,713 bytes and contains
+;;     zero occurrences of "Alicorp". The per-issuer paths under /SIMV/ and
+;;     /ConsultasP8/ answer 403 to automated clients.
+;;   * BVL (Bolsa de Valores de Lima). /emisores/detalle?companyCode=ALICORC1
+;;     answers 200 but renders via JavaScript; stripped of markup the delivered
+;;     body reads "Bolsa de Valores de Lima" and nothing more.
+;;   * Chile's CMF and SII (www.cmfchile.cl, zeus.sii.cl) and Ecuador's
+;;     Superintendencia de Companias (mvs.supercias.gob.ec) -- DNS does not
+;;     resolve for these hosts from the environment this gate runs in. That is
+;;     a reachability fact about the gate, not a judgement about the registers.
+;;   * Spain's Registro Mercantil. registradores.org is reachable but entity
+;;     lookup is session-gated, and the BOE's open BORME API answered 400/404
+;;     for the sumario dates tried. Locating the ALICORP HOLDCO ESPANA SL entry
+;;     needs a publication date this catalog does not have, so the Spanish
+;;     child is cited from GLEIF only.
+;;   * The legal representatives. Both the SRI and RUES rows above carry a
+;;     natural person's name AND their national identity number. No claim in
+;;     this catalog needs them, so none is cited and none is reproduced here.
+;;   * www.alicorp.com.pe is the company's own site, not a register, and is
+;;     not cited for any claim here. Note also that this repository does NOT
+;;     currently hold an archived Alicorp privacy policy, whatever
+;;     80-data/public/tos.journal.edn labels itself: the document captured
+;;     there on 2026-07-25 carries the marker "404 | Alicorp Consent Details",
+;;     and the URL it came from still answered HTTP 404 on 2026-08-20. The
+;;     capture is faithful -- its recorded sha256 matches its recorded text --
+;;     but it is a 404 page. See the README.
+;;
+;; Independent third-party archive. Not affiliated with, endorsed by, or
+;; sponsored by ALICORP SAA.
+
+{:catalog/subject
+ {:company/legal-name     "ALICORP SAA"
+  :company/lei            "549300Z1XH47TTIIJS11"
+  :company/jurisdiction   "PE"
+  :company/business-id    "20100055237"
+  :company/business-id-kind "RUC (Registro Unico de Contribuyentes, SUNAT)"
+  :company/legal-form-elf "PKRY"
+  :company/website        "https://www.alicorp.com.pe/pe/es"}
+
+ :catalog/retrieved "2026-08-20T09:20:00Z"
+
+ :catalog/entries
+ [{:cite/id "gleif-lei-record-legal-name"
+   :cite/authority :gleif
+   :cite/claim "GLEIF publishes LEI 549300Z1XH47TTIIJS11 with legal name ALICORP SAA."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "ALICORP SAA"}
+
+  {:cite/id "gleif-corroboration-level"
+   :cite/authority :gleif
+   :cite/claim "That record carries corroboration level FULLY_CORROBORATED, meaning GLEIF validated it against a public authority rather than against the registrant's own say-so."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "\"corroborationLevel\":\"FULLY_CORROBORATED\""}
+
+  {:cite/id "gleif-registered-as-ruc"
+   :cite/authority :gleif
+   :cite/claim "The entity is registered as 20100055237 -- a Peruvian RUC, the tax identifier SUNAT issues. This is the subject's primary national id."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "\"registeredAs\":\"20100055237\""}
+
+  {:cite/id "gleif-validated-as-ruc"
+   :cite/authority :gleif
+   :cite/claim "The registration block carries the same value in validatedAs, so the RUC is what GLEIF actually checked the entity against, not merely what the registrant reported."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "\"validatedAs\":\"20100055237\""}
+
+  {:cite/id "gleif-registration-authority-ra000689"
+   :cite/authority :gleif
+   :cite/claim "The registration authority recorded on the LEI is RA000689."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "RA000689"}
+
+  {:cite/id "gleif-jurisdiction-pe"
+   :cite/authority :gleif
+   :cite/claim "The entity's jurisdiction is PE (Peru)."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "\"jurisdiction\":\"PE\""}
+
+  {:cite/id "gleif-legal-address-callao"
+   :cite/authority :gleif
+   :cite/claim "The legal address is Av. Argentina 4793, Urb. Parque Industrial, in the Constitutional Province of Callao. Unlike many large issuers this is an operating industrial site, not a registered-agent accommodation address -- legal and headquarters addresses are identical on this record."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "AV. ARGENTINA NRO. 4793 URB. PARQUE INDUSTRIAL"}
+
+  {:cite/id "gleif-address-district"
+   :cite/authority :gleif
+   :cite/claim "The address sits in the district of Carmen de la Legua Reynoso, Callao."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "CARMEN DE LA LEGUA REYNOSO"}
+
+  {:cite/id "gleif-region-callao"
+   :cite/authority :gleif
+   :cite/claim "The ISO 3166-2 subdivision on both addresses is PE-CAL, the Constitutional Province of Callao -- which is not Lima, though the two adjoin."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "PE-CAL"}
+
+  {:cite/id "gleif-entity-creation-1992"
+   :cite/authority :gleif
+   :cite/claim "GLEIF gives the entity a creation date of 1992-10-09, twenty years before the LEI system existed. The LEI is a later identifier attached to an older company, not the company's origin."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "1992-10-09"}
+
+  {:cite/id "gleif-registration-status-issued"
+   :cite/authority :gleif
+   :cite/claim "The LEI registration status is ISSUED -- the LEI is live, not lapsed or retired."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "\"status\":\"ISSUED\""}
+
+  {:cite/id "gleif-initial-registration-2013"
+   :cite/authority :gleif
+   :cite/claim "The LEI was first issued 2013-04-10, in the system's first year of operation."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "2013-04-10"}
+
+  {:cite/id "gleif-previous-legal-name"
+   :cite/authority :gleif
+   :cite/claim "The record carries an otherNames entry of type PREVIOUS_LEGAL_NAME, so the current spelling ALICORP SAA supersedes an earlier one on the same LEI. The identifier, not the name, is what persists."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "PREVIOUS_LEGAL_NAME"}
+
+  {:cite/id "gleif-legal-form-pkry"
+   :cite/authority :gleif
+   :cite/claim "The reported entity legal form code is PKRY."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "PKRY"}
+
+  {:cite/id "gleif-spglobal-id"
+   :cite/authority :gleif
+   :cite/claim "GLEIF cross-references this LEI to S&P Global company id 877482, a commercial identifier outside the LEI system."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11"
+   :cite/expect-substring "877482"}
+
+  {:cite/id "gleif-ra000689-is-sunat"
+   :cite/authority :gleif
+   :cite/claim "RA000689 resolves to Peru's Superintendencia Nacional de Aduanas y de Administracion Tributaria (SUNAT), so the id above is a SUNAT RUC and not an arbitrary local number. The substring stops before the accented character because GLEIF escapes it."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000689"
+   :cite/expect-substring "Superintendencia Nacional de Aduanas y de Administraci"}
+
+  {:cite/id "gleif-ra000689-register-is-ruc"
+   :cite/authority :gleif
+   :cite/claim "The register that authority maintains is named as the Registro Unico de Contribuyentes (RUC) -- a taxpayer register, which is why the subject's national id is a tax number rather than a commercial-registry number."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000689"
+   :cite/expect-substring "Contribuyentes (RUC)"}
+
+  {:cite/id "gleif-ra000689-endpoint"
+   :cite/authority :gleif
+   :cite/claim "GLEIF names e-consultaruc.sunat.gob.pe as that authority's public service. This catalog followed that pointer and found it un-citable by GET (see the header); the pointer itself is cited so a reader can check that judgement."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000689"
+   :cite/expect-substring "e-consultaruc.sunat.gob.pe"}
+
+  {:cite/id "gleif-elf-pkry-peru"
+   :cite/authority :gleif
+   :cite/claim "The ELF code PKRY is a Peruvian legal form (Sociedad Anonima Abierta -- an open corporation, the form used by companies with publicly held shares), corroborating the PE jurisdiction from the legal-form table rather than from the record itself."
+   :cite/url "https://api.gleif.org/api/v1/entity-legal-forms/PKRY"
+   :cite/expect-substring "\"country\":\"Peru\""}
+
+  {:cite/id "gleif-elf-pkry-active"
+   :cite/authority :gleif
+   :cite/claim "That ELF entry is itself status ACTV, so the form is current in the ISO 20275 table and not a retired code."
+   :cite/url "https://api.gleif.org/api/v1/entity-legal-forms/PKRY"
+   :cite/expect-substring "\"status\":\"ACTV\""}
+
+  {:cite/id "gleif-managing-lou"
+   :cite/authority :gleif
+   :cite/claim "The LEI is maintained by managing LOU 5493001KJTIIGC8Y1R12, Bloomberg Finance L.P., listed by GLEIF as an accredited LEI issuer."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/lei-issuer"
+   :cite/expect-substring "Bloomberg Finance L.P."}
+
+  {:cite/id "gleif-lou-accreditation-date"
+   :cite/authority :gleif
+   :cite/claim "That issuer's accreditation date is 2017-04-13, which predates this LEI's last update and so covers the current record."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/lei-issuer"
+   :cite/expect-substring "2017-04-13"}
+
+  {:cite/id "gleif-ruc-reverse-lookup"
+   :cite/authority :gleif
+   :cite/claim "Asked by RUC rather than by LEI, GLEIF returns this same entity, so the national-id-to-LEI mapping resolves in both directions. Asked for 20100055238 -- one digit off -- the same endpoint answers 200 with total 0, which is why this row's substring and not its status is load-bearing."
+   :cite/url "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.registeredAs%5D=20100055237"
+   :cite/expect-substring "549300Z1XH47TTIIJS11"}
+
+  {:cite/id "gleif-isin"
+   :cite/authority :gleif
+   :cite/claim "GLEIF maps this LEI to ISIN USP0161KDW01. The P in position three is a CUSIP International Numbering System prefix for Peru, so this is a Peruvian issuer's international debt line rather than a US-domiciled security."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/isins"
+   :cite/expect-substring "USP0161KDW01"}
+
+  {:cite/id "gleif-direct-parent-exception"
+   :cite/authority :gleif
+   :cite/claim "ALICORP SAA reports no direct accounting consolidation parent, with reason NO_KNOWN_PERSON -- no legal entity consolidates it. It is the top of this group, not a subsidiary."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-parent-reporting-exception"
+   :cite/expect-substring "NO_KNOWN_PERSON"}
+
+  {:cite/id "gleif-ultimate-parent-exception"
+   :cite/authority :gleif
+   :cite/claim "The same exception is filed at the ultimate level, category ULTIMATE_ACCOUNTING_CONSOLIDATION_PARENT, confirming nothing consolidates it above the direct level either."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/ultimate-parent-reporting-exception"
+   :cite/expect-substring "ULTIMATE_ACCOUNTING_CONSOLIDATION_PARENT"}
+
+  {:cite/id "gleif-direct-child-alicorp-colombia"
+   :cite/authority :gleif
+   :cite/claim "GLEIF lists Alicorp Colombia S.A.S among the direct children of this LEI. This is the edge the RUES rows below corroborate independently."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "Alicorp Colombia S.A.S"}
+
+  {:cite/id "gleif-direct-child-colombia-nit"
+   :cite/authority :gleif
+   :cite/claim "That child is recorded as registered under id 900102580-3 -- a Colombian NIT with its check digit. It is the join key to the RUES rows below."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "\"registeredAs\":\"900102580-3\""}
+
+  {:cite/id "gleif-direct-child-colombia-ra"
+   :cite/authority :gleif
+   :cite/claim "The registration authority GLEIF records for that child is RA000101. Following GLEIF's own pointer for RA000101 is how this catalog arrived at the Colombian chamber of commerce, rather than picking a Colombian source that happened to agree."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "RA000101"}
+
+  {:cite/id "gleif-direct-child-inbalnor"
+   :cite/authority :gleif
+   :cite/claim "GLEIF lists Inbalnor S. A. (EC) among the direct children. This is the edge the SRI rows below corroborate independently. Note GLEIF's spacing -- 'Inbalnor S. A.' here against the SRI's 'INBALNOR S.A.'; each row matches the spelling its own authority publishes."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "Inbalnor S. A."}
+
+  {:cite/id "gleif-direct-child-ecuador-ruc"
+   :cite/authority :gleif
+   :cite/claim "That child is recorded as registered under id 0992711523001 -- an Ecuadorian RUC. It is the join key to the SRI rows below."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "\"registeredAs\":\"0992711523001\""}
+
+  {:cite/id "gleif-direct-child-ecuador-ra"
+   :cite/authority :gleif
+   :cite/claim "The registration authority GLEIF records for the Ecuadorian child is RA000691, which is how this catalog arrived at the SRI."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "RA000691"}
+
+  {:cite/id "gleif-direct-child-intradevco"
+   :cite/authority :gleif
+   :cite/claim "A third direct child, INTRADEVCO INDUSTRIAL S.A. (PE), is validated at RA000482 -- Peru's SUNARP commercial register -- rather than at SUNAT. Children of one parent are not all registered at the same kind of authority."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-children"
+   :cite/expect-substring "INTRADEVCO INDUSTRIAL S.A."}
+
+  {:cite/id "gleif-child-relationship-type"
+   :cite/authority :gleif
+   :cite/claim "The relationship records behind those children give the type explicitly as IS_DIRECTLY_CONSOLIDATED_BY, so each edge is an accounting-consolidation claim and not a loose affiliation."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/direct-child-relationships"
+   :cite/expect-substring "IS_DIRECTLY_CONSOLIDATED_BY"}
+
+  {:cite/id "gleif-ultimate-child-bolivia"
+   :cite/authority :gleif
+   :cite/claim "The ultimate-children set is larger than the direct one: INDUSTRIAS DE ACEITE S.A. (BO) is consolidated by this LEI but is not a direct child, so it is reached only through an intermediate holding."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/ultimate-children"
+   :cite/expect-substring "INDUSTRIAS DE ACEITE S.A."}
+
+  {:cite/id "gleif-ultimate-child-uruguay"
+   :cite/authority :gleif
+   :cite/claim "Alicorp Uruguay S.R.L likewise appears only at the ultimate level."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/ultimate-children"
+   :cite/expect-substring "Alicorp Uruguay S.R.L"}
+
+  {:cite/id "gleif-ultimate-child-atlantis"
+   :cite/authority :gleif
+   :cite/claim "ATLANTIS S.A. (UY) is a second Uruguayan entity in the ultimate set, giving the group seven jurisdictions across the two levels: PE, CO, CL, EC, ES, BO and UY."
+   :cite/url "https://api.gleif.org/api/v1/lei-records/549300Z1XH47TTIIJS11/ultimate-children"
+   :cite/expect-substring "ATLANTIS S.A."}
+
+  {:cite/id "gleif-ra000101-is-bogota-chamber"
+   :cite/authority :gleif
+   :cite/claim "RA000101 resolves to the Bogota Chamber of Commerce. The substring matches the pure-ASCII run of internationalOrganizationName because GLEIF escapes the accent in 'Bogota' as \\u00e1."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000101"
+   :cite/expect-substring " Chamber of Commerce"}
+
+  {:cite/id "gleif-ra000101-register-scope"
+   :cite/authority :gleif
+   :cite/claim "GLEIF describes that authority's register as the business register, the single bidders register and the non-profit organizations register -- the three books that are consolidated nationally into RUES, which is the dataset the Colombian rows below query."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000101"
+   :cite/expect-substring "Business register, the single bidders register, the non-profit organizations register"}
+
+  {:cite/id "gleif-ra000101-endpoint"
+   :cite/authority :gleif
+   :cite/claim "GLEIF names www.ccb.org.co as that chamber's public service."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000101"
+   :cite/expect-substring "www.ccb.org.co"}
+
+  {:cite/id "gleif-ra000691-is-sri"
+   :cite/authority :gleif
+   :cite/claim "RA000691 resolves to Ecuador's Servicio de Rentas Internas (SRI), so the Ecuadorian child's id is a tax-authority RUC and the SRI rows below are being read from the authority GLEIF itself named."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000691"
+   :cite/expect-substring "Servicio de Rentas Internas (SRI)"}
+
+  {:cite/id "gleif-ra000691-endpoint"
+   :cite/authority :gleif
+   :cite/claim "GLEIF names sri.gob.ec as that authority's public service, which is the host the Ecuadorian citations below are retrieved from."
+   :cite/url "https://api.gleif.org/api/v1/registration-authorities/RA000691"
+   :cite/expect-substring "sri.gob.ec"}
+
+  {:cite/id "rues-nit-900102580-is-alicorp-colombia"
+   :cite/authority :co-rues
+   :cite/claim "Colombia's RUES, asked for NIT 900102580, returns ALICORP COLOMBIA S.A.S. The NIT GLEIF recorded on the child LEI resolves in Colombia's own commercial register to the same company. Asked for 900102581 the same endpoint answers HTTP 200 with an empty array, so this row is carried by the body and not by the status."
+   :cite/url "https://www.datos.gov.co/resource/c82u-588k.json?nit=900102580"
+   :cite/expect-substring "ALICORP COLOMBIA S.A.S"}
+
+  {:cite/id "rues-chamber-is-bogota"
+   :cite/authority :co-rues
+   :cite/claim "RUES records that company's chamber of commerce as BOGOTA -- independently confirming RA000101, the registration authority GLEIF names on the child LEI. This is the single strongest non-GLEIF claim in this catalog."
+   :cite/url "https://www.datos.gov.co/resource/c82u-588k.json?nit=900102580"
+   :cite/expect-substring "\"camara_comercio\":\"BOGOTA\""}
+
+  {:cite/id "rues-check-digit"
+   :cite/authority :co-rues
+   :cite/claim "RUES gives the NIT's check digit as 3, completing 900102580-3 -- the exact string GLEIF stores in registeredAs. The two registers agree down to the check digit."
+   :cite/url "https://www.datos.gov.co/resource/c82u-588k.json?nit=900102580"
+   :cite/expect-substring "\"digito_verificacion\":\"3\""}
+
+  {:cite/id "rues-matricula"
+   :cite/authority :co-rues
+   :cite/claim "RUES gives the company a mercantile registration number of 1628581, a Colombian identifier that appears in no GLEIF field."
+   :cite/url "https://www.datos.gov.co/resource/c82u-588k.json?nit=900102580"
+   :cite/expect-substring "\"matricula\":\"1628581\""}
+
+  {:cite/id "rues-status-activa"
+   :cite/authority :co-rues
+   :cite/claim "The registration status is ACTIVA. This matters because RUES also holds two CANCELADA companies named ALICORP S A S and GRUPO ALICORP - ALPHA SAS, and a live but unrelated ALIANZA CORPORATIVA ALICORP SAS in Villavicencio -- searching RUES by name would return all four. The NIT is what disambiguates, which is why this row queries by NIT and not by name."
+   :cite/url "https://www.datos.gov.co/resource/c82u-588k.json?nit=900102580"
+   :cite/expect-substring "\"estado_matricula\":\"ACTIVA\""}
+
+  {:cite/id "rues-registered-2006"
+   :cite/authority :co-rues
+   :cite/claim "RUES dates the Colombian registration to 2006-08-25, seven years before the parent's LEI was issued. Only the commercial register carries that date."
+   :cite/url "https://www.datos.gov.co/resource/c82u-588k.json?nit=900102580"
+   :cite/expect-substring "\"fecha_matricula\":\"20060825\""}
+
+  {:cite/id "rues-dataset-is-the-national-register"
+   :cite/authority :co-rues
+   :cite/claim "The dataset queried above is described by its publisher as the Registro Unico Empresarial y Social (RUES) -- so the rows are the national register itself, not a third-party scrape of it. This body is UTF-8, unlike GLEIF's escaped output, so the accented form matches verbatim here."
+   :cite/url "https://www.datos.gov.co/api/views/c82u-588k.json"
+   :cite/expect-substring "Registro Único Empresarial y Social"}
+
+  {:cite/id "rues-dataset-source-chambers"
+   :cite/authority :co-rues
+   :cite/claim "Its description states the data comes from the Registro Mercantil administered by the chambers of commerce nationally -- which is the same book GLEIF's RA000101 entry describes, reached from the Colombian side."
+   :cite/url "https://www.datos.gov.co/api/views/c82u-588k.json"
+   :cite/expect-substring "Registro Mercantil que administran las C"}
+
+  {:cite/id "rues-dataset-attribution-link"
+   :cite/authority :co-rues
+   :cite/claim "The dataset's attribution link is rues.org.co, the register's own site, published on Colombia's national open-data portal."
+   :cite/url "https://www.datos.gov.co/api/views/c82u-588k.json"
+   :cite/expect-substring "rues.org.co"}
+
+  {:cite/id "sri-ruc-is-inbalnor"
+   :cite/authority :ec-sri
+   :cite/claim "Ecuador's SRI, asked for RUC 0992711523001, returns INBALNOR S.A. The RUC GLEIF recorded on the Ecuadorian child resolves at Ecuador's tax authority to the same institution. Asked for a one-digit-off RUC the same endpoint answers HTTP 204, and asked for an unrelated valid RUC it answers 200 with a different company -- so again the substring, not the status, carries this row."
+   :cite/url "https://srienlinea.sri.gob.ec/sri-catastro-sujeto-servicio-internet/rest/ConsolidadoContribuyente/obtenerPorNumerosRuc?ruc=0992711523001"
+   :cite/expect-substring "INBALNOR S.A."}
+
+  {:cite/id "sri-status-activo"
+   :cite/authority :ec-sri
+   :cite/claim "The SRI records that taxpayer as ACTIVO -- the Ecuadorian subsidiary GLEIF still lists as a child is still a live taxpayer, checked against the tax register rather than against the LEI record's own renewal date. The substring spans the name and the status together, so pointing this row at another live company cannot leave it standing (see IDENTITY ROWS above)."
+   :cite/url "https://srienlinea.sri.gob.ec/sri-catastro-sujeto-servicio-internet/rest/ConsolidadoContribuyente/obtenerPorNumerosRuc?ruc=0992711523001"
+   :cite/expect-substring "\"razonSocial\":\"INBALNOR S.A.\",\"estadoContribuyenteRuc\":\"ACTIVO\""}
+
+  {:cite/id "sri-activity-aquafeed"
+   :cite/authority :ec-sri
+   :cite/claim "The SRI gives the principal economic activity as manufacture of prepared feeds for aquatic animals. That is the aquafeed line Alicorp runs through its Vitapro subsidiaries, which GLEIF also lists as children of this LEI -- so the corporate edge and the business activity corroborate each other from two unrelated sources."
+   :cite/url "https://srienlinea.sri.gob.ec/sri-catastro-sujeto-servicio-internet/rest/ConsolidadoContribuyente/obtenerPorNumerosRuc?ruc=0992711523001"
+   :cite/expect-substring "ALIMENTOS PREPARADOS PARA ANIMALES"}
+
+  {:cite/id "sri-inicio-actividades"
+   :cite/authority :ec-sri
+   :cite/claim "The SRI dates the start of activities to 2011-03-22, an Ecuadorian fact that appears in no GLEIF field."
+   :cite/url "https://srienlinea.sri.gob.ec/sri-catastro-sujeto-servicio-internet/rest/ConsolidadoContribuyente/obtenerPorNumerosRuc?ruc=0992711523001"
+   :cite/expect-substring "2011-03-22"}
+
+  {:cite/id "sri-ruc-binds-name"
+   :cite/authority :ec-sri
+   :cite/claim "In the SRI's record the RUC and the legal name are adjacent fields, so a single substring binds identifier to name. This is the row that makes the Ecuadorian join unfalsifiable by coincidence: no other taxpayer can satisfy it, whatever else it shares with this one."
+   :cite/url "https://srienlinea.sri.gob.ec/sri-catastro-sujeto-servicio-internet/rest/ConsolidadoContribuyente/obtenerPorNumerosRuc?ruc=0992711523001"
+   :cite/expect-substring "\"numeroRuc\":\"0992711523001\",\"razonSocial\":\"INBALNOR S.A.\""}]}
