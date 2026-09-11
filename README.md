@@ -45,7 +45,7 @@ outstanding work, not something this repository currently has.
 ## Verifying the citations
 
 ```sh
-nbb tools/verify_citations.cljs facts/catalog.edn --min 50
+nbb tools/verify_citations.cljk facts/catalog.edn --min 50
 ```
 
 For every row in `facts/catalog.edn` the gate performs a live `GET`, requires
